@@ -1,0 +1,163 @@
+apiVersion: v1
+
+metadata:
+  name: {{ include "lighty-rcgnmi-app-helm.fullname" . }}
+kind: ConfigMap
+data:
+  lighty-config.json: |
+    {
+      "modules": {
+        "moduleTimeoutSeconds": {{ .Values.lighty.moduleTimeOut | quote }}
+      },
+      "controller":{
+        "restoreDirectoryPath":"./clustered-datastore-restore",
+        "maxDataBrokerFutureCallbackQueueSize":1000,
+        "maxDataBrokerFutureCallbackPoolSize":10,
+        "metricCaptureEnabled":false,
+        "mailboxCapacity":1000,
+        "moduleShardsConfig": "configuration/initial/module-shards.conf",
+        "modulesConfig": "configuration/initial/modules.conf",
+        "domNotificationRouterConfig":{
+          "queueDepth":65536,
+          "spinTime":0,
+          "parkTime":0,
+          "unit":"MILLISECONDS"
+        },
+        "actorSystemConfig":{
+          {{- if .Values.lighty.pekko.isSingleNode }}
+          "pekkoConfigPath":"singlenode/pekko-default.conf",
+          {{- else }}
+          "pekkoConfigPath":"{{ .Values.lighty.configDirectoryName }}/{{ .Values.lighty.pekko.pekkoNodeConfigFilename }}",
+          {{- end }}
+          "factoryPekkoConfigPath":"singlenode/factory-pekko.conf"
+        },
+        "schemaServiceConfig":{
+          "topLevelModels":[
+            { "usedBy": "CONTROLLER", "name": "odl-general-entity", "revision": "2015-09-30", "nameSpace": "urn:opendaylight:params:xml:ns:yang:mdsal:core:general-entity"},
+            { "usedBy": "CONTROLLER", "name": "ietf-yang-types", "revision": "2013-07-15", "nameSpace": "urn:ietf:params:xml:ns:yang:ietf-yang-types"},
+            { "usedBy": "CONTROLLER", "name": "iana-if-type", "revision": "2023-01-26", "nameSpace": "urn:ietf:params:xml:ns:yang:iana-if-type"},
+            { "usedBy": "CONTROLLER", "name": "odl-entity-owners" , "nameSpace": "urn:opendaylight:params:xml:ns:yang:controller:entity-owners"},
+            { "usedBy": "CONTROLLER", "name": "cluster-admin", "revision": "2025-01-31", "nameSpace": "urn:opendaylight:params:xml:ns:yang:controller:md:sal:cluster:admin"},
+            { "usedBy": "CONTROLLER", "name": "opendaylight-l2-types", "revision": "2013-08-27", "nameSpace": "urn:opendaylight:l2:types"},
+            { "usedBy": "CONTROLLER", "name": "distributed-datastore-provider", "revision": "2025-01-30", "nameSpace": "urn:opendaylight:params:xml:ns:yang:controller:config:distributed-datastore-provider"},
+            { "usedBy": "CONTROLLER", "name": "ietf-interfaces", "revision":"2018-02-20", "nameSpace":"urn:ietf:params:xml:ns:yang:ietf-interfaces"},
+            { "usedBy": "RESTCONF", "name": "ietf-restconf-monitoring", "revision": "2017-01-26", "nameSpace": "urn:ietf:params:xml:ns:yang:ietf-restconf-monitoring"},
+            { "usedBy": "RESTCONF", "name": "sal-remote-augment", "revision": "2023-11-03", "nameSpace": "urn:sal:restconf:event:subscription"},
+            { "usedBy": "RESTCONF", "name": "ietf-yang-library", "revision": "2019-01-04", "nameSpace": "urn:ietf:params:xml:ns:yang:ietf-yang-library"},
+            { "usedBy": "RESTCONF", "name": "ietf-restconf", "revision": "2017-01-26", "nameSpace": "urn:ietf:params:xml:ns:yang:ietf-restconf"},
+            { "usedBy": "GNMI", "name": "gnmi-topology", "revision": "2021-03-16", "nameSpace": "urn:lighty:gnmi:topology"},
+            { "usedBy": "GNMI", "name": "gnmi-yang-storage", "revision": "2021-03-31", "nameSpace": "urn:lighty:gnmi:yang:storage"},
+            { "usedBy": "GNMI", "name": "gnmi-certificate-storage", "revision": "2021-05-04", "nameSpace": "urn:lighty:gnmi:certificate:storage"},
+            { "usedBy": "GNMI", "name": "gnmi-force-capabilities", "revision": "2021-07-02", "nameSpace": "urn:lighty:gnmi:force:capabilities"},
+            { "usedBy": "CLUSTER", "name": "netconf-clustered-topology-config", "revision": "2017-04-19", "nameSpace": "urn:opendaylight:netconf:topology:singleton:config"}
+          ]
+        }
+      },
+      "restconf":{
+        "inetAddress":"0.0.0.0",
+        "httpPort":8888,
+        "restconfServletContextPath":"/restconf"
+      }
+    }
+
+  log4j2.xml: |
+    <Configuration status="INFO">
+        <Appenders>
+            <Console name="ConsoleAppender" target="SYSTEM_OUT">
+                <PatternLayout pattern="%5p %d{HH:mm:ss} [%c] (%F:%L) - %m%n" />
+            </Console>
+        </Appenders>
+    
+        <Loggers>
+            <Root level="INFO">
+                <AppenderRef ref="ConsoleAppender"/>
+            </Root>
+        </Loggers>
+    </Configuration>  
+
+  pekko-node-k8s.conf: |
+    pekko {
+
+      log-level = "debug"
+
+      actor {
+        warn-about-java-serializer-usage = off
+        provider = "org.apache.pekko.cluster.ClusterActorRefProvider"
+        serializers {
+          java = "org.apache.pekko.serialization.JavaSerializer"
+          proto = "org.apache.pekko.remote.serialization.ProtobufSerializer"
+          simpleReplicatedLogEntry = "org.opendaylight.controller.cluster.raft.persisted.SimpleReplicatedLogEntrySerializer"
+        }
+
+        serialization-bindings {
+          "com.google.protobuf.Message" = proto
+          "org.opendaylight.controller.cluster.raft.persisted.SimpleReplicatedLogEntry" = simpleReplicatedLogEntry
+        }
+      }
+
+
+      remote {
+        artery {
+          canonical.hostname = ${?HOSTNAME}
+          canonical.port = {{ .Values.lighty.pekko.remotingPort }}
+          bind-hostname = 0.0.0.0
+          bind-port = {{ .Values.lighty.pekko.remotingPort }}
+        }
+      }
+
+      cluster {
+        seed-nodes = []
+        roles = [
+          "{{ .Values.lighty.pekko.memberNamePrefix }}"${?HOSTNAME}
+        ]
+        downing-provider-class = "org.apache.pekko.cluster.sbr.SplitBrainResolverProvider"
+        split-brain-resolver {
+          active-strategy = "{{ .Values.lighty.pekko.sbrStrategy }}"
+        }
+      }
+
+      management.http.hostname = ${?HOSTNAME}
+      management.http.bind-hostname = "0.0.0.0"
+      management.http.port = {{ .Values.lighty.pekko.managementPort }}
+      management.http.bind-port = {{ .Values.lighty.pekko.managementPort }}
+
+      management.cluster.bootstrap {
+        new-cluster-enabled = on
+        contact-point-discovery {
+          required-contact-point-nr = {{ .Values.lighty.pekko.minimumClusterNodes }} // minimun number of nodes to bootstrap the cluster
+        }
+      }
+
+      discovery {
+        method = kubernetes-api
+        kubernetes-api {
+          class = org.apache.pekko.discovery.kubernetes.KubernetesApiServiceDiscovery
+          pod-namespace = {{ .Values.lighty.pekko.discovery.podNamespace | quote }} // in which namespace cluster is running
+          pod-label-selector = "{{ .Values.lighty.pekko.discovery.podSelectorName }}={{ .Values.lighty.pekko.discovery.podSelectorValue }}" // selector - to find other cluster nodes
+          pod-port-name = {{ .Values.lighty.pekko.discovery.portName | quote }} // name of cluster management port
+        }
+      }
+
+      lighty-kubernetes {
+        pod-restart-timeout = 30
+      }
+
+      persistence {
+        # You can choose to put the snapshots/journal directories somewhere else by modifying
+        # the following two properties. The directory location specified may be a relative or absolute path.
+
+        journal.leveldb.dir = "target/journal"
+        snapshot-store.local.dir = "target/snapshots"
+
+        journal {
+          leveldb {
+            # Set native = off to use a Java-only implementation of leveldb.
+            # Note that the Java-only version is not currently considered by Pekko to be production quality,
+            # but being Java-only makes it work also on platforms where native leveldb is not available.
+
+            #native = on
+          }
+        }
+      }
+
+    }

@@ -1,0 +1,10 @@
+# Ignorar artefactos de build
+lighty/**/target/
+lighty/**/*.jar
+lighty/**/*.zip
+lighty/**/*.log
+
+# Archivos de macOS
+.DS_Store
+
+
