@@ -1,0 +1,40 @@
+name: ceos-testbed
+
+topology:
+  nodes:
+    pc1:
+      kind: linux
+      type: linux-network-multitool
+      group: server
+      image: wbitt/network-multitool:latest
+      mgmt-ipv4: 172.20.20.2
+
+    r1:
+      kind: ceos
+      image: ceos:4.34.3M
+      mgmt-ipv4: 172.20.20.4
+      group: router
+      startup-config: r1.cfg
+      ports:
+        - 6030:6030/tcp   # ⭐ NECESARIO PARA GNMI
+
+    r2:
+      kind: ceos
+      image: ceos:4.34.3M
+      mgmt-ipv4: 172.20.20.5
+      group: router
+      startup-config: r2.cfg
+      ports:
+        - 6031:6030/tcp   # ⭐ si quieres gNMI en r2 también
+
+    pc2:
+      kind: linux
+      type: linux-network-multitool
+      group: server
+      image: wbitt/network-multitool:latest
+      mgmt-ipv4: 172.20.20.3
+
+  links:
+    - endpoints: ["pc1:eth1", "r1:eth1"]
+    - endpoints: ["r1:eth2", "r2:eth2"]
+    - endpoints: ["r2:eth1", "pc2:eth1"]

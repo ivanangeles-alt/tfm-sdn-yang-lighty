@@ -1,0 +1,6 @@
+cd /home/upm/Desktop/CONTAINER-LAB/module-sin-lighty/clab-ceos-testbed/r1/ssl
+
+  gnmic -a 172.20.20.4:6030 -u admin -p admin    \
+  --tls-ca ca.crt                   \
+  --tls-cert node.crt \
+  --tls-key node.key capabilities
